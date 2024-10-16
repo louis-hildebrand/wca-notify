@@ -3,6 +3,7 @@ Simple script that checks for new WCA competitions in Canada and updates a text
 file if any were found.
 """
 
+import subprocess
 from dataclasses import dataclass
 from datetime import datetime
 from inspect import cleandoc
@@ -13,6 +14,7 @@ import requests
 COUNTRY_CODE = "CA"
 COMPS_FILE = Path.home().joinpath("wca.txt")
 COMP_IDS_FILE = Path.home().joinpath("wca-comp-ids.txt")
+WCA_ICON = Path.home().joinpath("wca.svg")
 FIRST_LINE = "Upcoming WCA events in Canada (in ~/wca.txt)"
 
 
@@ -47,7 +49,8 @@ class Competition:
             f"""
             {self.name}
                 City:         {self.city}
-                Date:         {self.start_date} to {self.end_date} (registration {self.registration_open} to {self.registration_close})
+                Date:         {self.start_date} to {self.end_date}
+                Registration: {self.registration_open} to {self.registration_close})
                 Website:      {self.website}
             """
         ).strip()
@@ -117,6 +120,23 @@ def store_comp_ids(comp_ids: list[str]) -> None:
     COMP_IDS_FILE.write_text("\n".join(sorted_unique_ids), encoding="utf-8")
 
 
+# pylint: disable=invalid-name
+def notify_new_comps(n: int) -> None:
+    """Send a desktop notification for new competitions."""
+    comp_or_comps = "competition" if n == 1 else "competitions"
+    has_or_have = "has" if n == 1 else "have"
+    subprocess.run(
+        [
+            "notify-send",
+            "--icon",
+            WCA_ICON.as_posix(),
+            f"WCA {comp_or_comps}",
+            f"{n} new {comp_or_comps} {has_or_have} been announced in Canada.",
+        ],
+        check=True,
+    )
+
+
 def main() -> None:
     """Run the script."""
     old_comp_ids = get_old_comp_ids()
@@ -126,8 +146,12 @@ def main() -> None:
         for c in new_comps
         if not c.is_registration_closed() and c.cid not in old_comp_ids
     ]
+    # The date in the comp details file needs to be updated whether or not new
+    # comps were found
     store_comp_details(new_comps)
-    store_comp_ids(old_comp_ids + [c.cid for c in new_comps])
+    if new_comps:
+        store_comp_ids(old_comp_ids + [c.cid for c in new_comps])
+        notify_new_comps(n=len(new_comps))
 
 
 if __name__ == "__main__":
